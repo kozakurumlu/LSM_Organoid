@@ -4,6 +4,73 @@ from collections import deque
 from sklearn.decomposition import PCA
 from scipy.ndimage import gaussian_filter1d
 
+
+def convert_organoid_data_to_lsm_input(organoid_spikes, num_lsm_inputs, bin_size_s, duration_s, dt_ms, rng):
+    """
+    Converts raw organoid spike times into LSM input format using rate coding.
+
+    Args:
+        organoid_spikes (list): A list of 8 arrays, each containing spike times (in seconds) for an electrode.
+        num_lsm_inputs (int): Total number of input neurons in the LSM (e.g., 25).
+        bin_size_s (float): The time window for counting spikes and calculating rate (in seconds).
+        duration_s (float): Total simulation duration (in seconds).
+        dt_ms (float): The simulation timestep in milliseconds.
+        rng (Generator): NumPy random number generator.
+
+    Returns:
+        list: A list of NumPy arrays with spike times formatted for the LSM.
+    """
+    print(f"Converting organoid data with a {bin_size_s*1000}ms bin size...")
+    
+    # Initialize empty lists for each LSM input neuron's spikes
+    lsm_spikes_list = [[] for _ in range(num_lsm_inputs)]
+    
+    # Determine how LSM input neurons are assigned to the 8 organoid electrodes
+    neurons_per_electrode = num_lsm_inputs // 8
+    remainder = num_lsm_inputs % 8
+    
+    time_bins = np.arange(0, duration_s, bin_size_s)
+    
+    lsm_neuron_idx_start = 0
+    for electrode_idx in range(8):
+        # Assign neurons to this electrode, adding one from the remainder if applicable
+        num_assigned = neurons_per_electrode + (1 if electrode_idx < remainder else 0)
+        lsm_neuron_indices = range(lsm_neuron_idx_start, lsm_neuron_idx_start + num_assigned)
+        
+        electrode_raw_spikes = organoid_spikes[electrode_idx]
+        
+        # Calculate rate and generate spikes for each time bin
+        for t_start in time_bins:
+            t_stop = t_start + bin_size_s
+            
+            # Count spikes from the organoid electrode in the current bin
+            spikes_in_bin = electrode_raw_spikes[(electrode_raw_spikes >= t_start) & (electrode_raw_spikes < t_stop)]
+            spike_count = len(spikes_in_bin)
+            
+            if spike_count > 0:
+                rate_hz = spike_count / bin_size_s
+                
+                # Generate spikes for the assigned LSM neurons at this rate for this bin's duration
+                generated_trains = generate_poisson_spike_trains(
+                    n_neurons=num_assigned,
+                    rate=rate_hz,
+                    t_start=t_start,
+                    t_stop=t_stop,
+                    dt=dt_ms,
+                    rng=rng
+                )
+                
+                # Add the generated spikes to the correct lists
+                for i, lsm_idx in enumerate(lsm_neuron_indices):
+                    lsm_spikes_list[lsm_idx].extend(generated_trains[i])
+
+        lsm_neuron_idx_start += num_assigned
+
+    # Convert lists of spikes to NumPy arrays for the simulation
+    final_lsm_spikes = [np.array(spikes) for spikes in lsm_spikes_list]
+    
+    return final_lsm_spikes
+
 # --- 1. Helper Function to Generate Input Spikes (Unchanged) ---
 def generate_poisson_spike_trains(n_neurons, rate, t_start, t_stop, dt=1.0, rng=None):
     """Generates a list of spike time arrays for a population of neurons."""
