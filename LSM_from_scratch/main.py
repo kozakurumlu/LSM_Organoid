@@ -60,7 +60,7 @@ class LIFNeuron:
             return True
         return False
 
-# --- 3. Network Class ---
+# --- 3. Network Class (Reverted to not include recurrent connections) ---
 class Network:
     """Manages the entire simulation, including all neurons and connections."""
     def __init__(self, lif_params, n_input, n_exc, n_inh, dt=1.0, rng=None):
@@ -73,7 +73,6 @@ class Network:
         self.input_connections = [[] for _ in range(n_input)]
         self.rng = rng if rng is not None else np.random.default_rng()
 
-    # === CONNECTIVITY FIX: Implement sparse, random connections ===
     def connect_inputs(self, w_input, delay_ms, p_connect=0.1):
         """Connects each input neuron to a random subset of reservoir neurons."""
         print(f"Connecting inputs with {p_connect*100}% probability...")
@@ -105,7 +104,7 @@ class Network:
                 _, target_idx, weight = spike_queue.popleft()
                 if weight > 0:
                     self.reservoir_neurons[target_idx].i_syn_E += weight
-                else:
+                else: 
                     self.reservoir_neurons[target_idx].i_syn_I += weight
             
             for i in range(self.n_total):
@@ -114,7 +113,7 @@ class Network:
         
         print("Simulation finished.")
 
-# --- 4. Plotting and Analysis Function ---
+
 def plot_activity_and_pca(network, total_duration_s, input_spikes, hidden_indices, output_indices):
     """
     Generates raster plots and performs a single PCA on all populations,
@@ -133,7 +132,7 @@ def plot_activity_and_pca(network, total_duration_s, input_spikes, hidden_indice
     ax1.scatter(np.array(input_spikes_t) / 1000.0, input_spikes_id, c='blue', marker='.', s=10)
     ax1.set_title('Input Layer Activity')
     ax1.set_ylabel('Neuron Index')
-    ax1.set_ylim(0, network.n_input)
+    ax1.set_ylim(-1, network.n_input)
 
     res_spikes = np.array(network.spike_recorder) if network.spike_recorder else np.empty((0,2))
     hidden_mask = np.isin(res_spikes[:, 1], hidden_indices)
@@ -160,7 +159,6 @@ def plot_activity_and_pca(network, total_duration_s, input_spikes, hidden_indice
     num_bins = int(total_duration_s * 1000 / bin_size_ms)
     time_bins = np.linspace(0, total_duration_s * 1000, num_bins + 1)
     
-    # Create activity matrices for each population
     activity_input = np.array([np.histogram(s, bins=time_bins)[0] for s in input_spikes]).T
     activity_hidden = np.array([np.histogram(res_spikes[res_spikes[:, 1] == i, 0], bins=time_bins)[0] for i in hidden_indices]).T
     activity_output = np.array([np.histogram(res_spikes[res_spikes[:, 1] == i, 0], bins=time_bins)[0] for i in output_indices]).T
@@ -170,16 +168,11 @@ def plot_activity_and_pca(network, total_duration_s, input_spikes, hidden_indice
     smooth_hidden = gaussian_filter1d(activity_hidden, sigma=sigma_smooth, axis=0)
     smooth_output = gaussian_filter1d(activity_output, sigma=sigma_smooth, axis=0)
 
-    # === PCA VISUALIZATION FIX: Fit on combined data, then transform padded data ===
-    # 1. Horizontally stack data to create a single matrix for fitting
     combined_activity = np.hstack([smooth_input, smooth_hidden, smooth_output])
 
-    # 2. Fit a single PCA model on this combined data
     pca = PCA(n_components=3)
     pca.fit(combined_activity)
 
-    # 3. Create "padded" matrices for each population
-    # This places each population's activity in the correct "slice" of the full feature space
     pad_hidden = np.zeros_like(smooth_hidden)
     pad_output = np.zeros_like(smooth_output)
     padded_input_activity = np.hstack([smooth_input, pad_hidden, pad_output])
@@ -189,12 +182,10 @@ def plot_activity_and_pca(network, total_duration_s, input_spikes, hidden_indice
     
     padded_output_activity = np.hstack([pad_input, pad_hidden, smooth_output])
     
-    # 4. Transform each padded matrix into the SHARED PCA space
     pc_input = pca.transform(padded_input_activity)
     pc_hidden = pca.transform(padded_hidden_activity)
     pc_output = pca.transform(padded_output_activity)
 
-    # --- Plot the 3D trajectories on a single graph ---
     fig_pca = plt.figure(figsize=(12, 10))
     ax = fig_pca.add_subplot(111, projection='3d')
     split_point = num_bins // 2
@@ -204,12 +195,10 @@ def plot_activity_and_pca(network, total_duration_s, input_spikes, hidden_indice
     pcas = [pc_input, pc_hidden, pc_output]
 
     for i, (pc_data, label) in enumerate(zip(pcas, labels)):
-        # High-rate phase
         ax.plot(pc_data[:split_point, 0], pc_data[:split_point, 1], pc_data[:split_point, 2], 
                 label=f'{label} (100 Hz)', c=colors['high'][i], alpha=0.9)
-        # Low-rate phase
         ax.plot(pc_data[split_point:, 0], pc_data[split_point:, 1], pc_data[split_point:, 2], 
-                label=f'{label} (25 Hz)', c=colors['low'][i], alpha=0.9)
+                label=f'{label} (50 Hz)', c=colors['low'][i], alpha=0.9) # Updated label
     
     ax.set_title('3D PCA of State Trajectories in a Shared Space')
     ax.set_xlabel('Principal Component 1')
@@ -218,17 +207,16 @@ def plot_activity_and_pca(network, total_duration_s, input_spikes, hidden_indice
     ax.legend()
     plt.show()
 
-    
+# --- Main execution block ---
 if __name__ == '__main__':
     DT = 1.0
     TOTAL_DURATION = 20.0
     
-    # === PARAMETER FIX: Increase neuron excitability ===
     LIF_PARAMS = {
         'v_rest': -65.0, 'v_reset': -65.0, 'v_thresh': -50.0,
         'tau_m': 20.0, 'tau_refrac': 5.0, 'tau_syn_E': 5.0,
         'tau_syn_I': 10.0, 
-        'i_offset': 0.2, # Increased from 0.05
+        'i_offset': 0.1, # Re-tuned parameter
     }
 
     N_INPUT, N_EXC, N_INH = 25, 160, 40
@@ -236,8 +224,11 @@ if __name__ == '__main__':
     N_HIDDEN_PLOT, N_OUTPUT_PLOT = 50, 25
     hidden_indices = list(range(N_HIDDEN_PLOT))
     output_indices = list(range(N_TOTAL - N_OUTPUT_PLOT, N_TOTAL))
-    RATE_HIGH, RATE_LOW = 100.0, 25.0
-
+    RATE_HIGH = 100.0
+    
+    # === YOUR SUGGESTION: Increase the low rate input ===
+    RATE_LOW = 50.0 
+    
     rng = np.random.default_rng(seed=42)
     
     spikes_high = generate_poisson_spike_trains(N_INPUT, RATE_HIGH, 0.0, TOTAL_DURATION / 2, dt=DT, rng=rng)
@@ -246,8 +237,7 @@ if __name__ == '__main__':
 
     lsm_network = Network(lif_params=LIF_PARAMS, n_input=N_INPUT, n_exc=N_EXC, n_inh=N_INH, dt=DT, rng=rng)
     
-    # === PARAMETER FIX: Increase synaptic weight ===
-    lsm_network.connect_inputs(w_input=1.2, delay_ms=1.0, p_connect=0.1) # Increased from 0.8
+    lsm_network.connect_inputs(w_input=1.0, delay_ms=1.0, p_connect=0.1) # Re-tuned parameter
     
     lsm_network.run(duration_s=TOTAL_DURATION, input_spike_trains=input_spikes)
 
