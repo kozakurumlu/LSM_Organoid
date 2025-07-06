@@ -67,3 +67,55 @@ def convert_spike_counts_to_lsm_input(organoid_spike_counts, num_lsm_inputs, bin
             lsm_neuron_idx_start += num_assigned
     final_lsm_spikes = [np.array(spikes) for spikes in lsm_spikes_list]
     return final_lsm_spikes 
+
+
+def generate_equation_based_data(duration_s, bin_size_s, pattern_type='sine', noise_level=0, rng=None):
+    """
+    Generates spike count data based on one of two mathematical patterns.
+
+    Args:
+        duration_s (float): The duration of the pattern in seconds.
+        bin_size_s (float): The time window for each spike count.
+        pattern_type (str): Either 'sine' or 'random_walk'.
+        noise_level (int): The amplitude of noise to add.
+        rng (np.random.Generator): NumPy random number generator.
+
+    Returns:
+        list of lists: The generated spike count data.
+    """
+    if rng is None:
+        rng = np.random.default_rng()
+        
+    print(f"Generating data for pattern: '{pattern_type}'...")
+    num_bins = int(duration_s / bin_size_s)
+    t = np.linspace(0, duration_s, num_bins)
+    
+    equation_data = np.zeros((num_bins, 8))
+    
+    if pattern_type == 'sine':
+        # Pattern A: A steady, periodic sine wave
+        base_freq = 0.5 # Hz
+        for i in range(8):
+            freq = base_freq + rng.uniform(-0.1, 0.1)
+            phase = rng.uniform(0, np.pi)
+            wave = 10 * np.sin(2 * np.pi * freq * t + phase) + 10
+            equation_data[:, i] = wave
+            
+    elif pattern_type == 'random_walk':
+        # Pattern B: A meandering random walk for each channel
+        # Start each channel at a different baseline count
+        current_values = rng.uniform(5, 15, size=8)
+        for t_step in range(num_bins):
+            equation_data[t_step, :] = current_values
+            # Update each channel's value with a small random step
+            steps = rng.choice([-1, 0, 1], size=8)
+            current_values += steps
+            # Ensure counts don't go below zero
+            current_values = np.maximum(0, current_values)
+            
+    # Add noise to the generated wave before converting to integer counts
+    noise = rng.integers(-noise_level, noise_level + 1, size=equation_data.shape)
+    noisy_data = equation_data + noise
+    
+    # Final conversion to integer counts, ensuring no negatives
+    return np.maximum(0, noisy_data).astype(int).tolist()

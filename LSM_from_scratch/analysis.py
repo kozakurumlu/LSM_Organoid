@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from scipy.ndimage import gaussian_filter1d
 from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
 
 def plot_scree(pca):
     """
@@ -106,10 +108,42 @@ def plot_scree(pca, ax=None):
     ax.set_title('Scree Plot')
     plt.show()
 
-def train_and_evaluate_classifier(features, labels):
-    """Stub for classifier training and evaluation. To be implemented."""
-    # Example: from sklearn.linear_model import LogisticRegression
-    # model = LogisticRegression().fit(features, labels)
-    # score = model.score(features, labels)
-    # return model, score
-    pass 
+
+def train_and_evaluate_classifier(reservoir_activity, labels, n_components=5, class_names=None):
+    """
+    Trains and evaluates a logistic regression classifier on reservoir states.
+
+    Args:
+        reservoir_activity (np.ndarray): The smoothed activity of reservoir neurons (time, neurons).
+        labels (np.ndarray): The corresponding label (0 or 1) for each time step.
+        n_components (int): The number of principal components to use as features.
+        class_names (list or None): List of class names for reporting. If None, defaults to ['Low Activity', 'High Activity'].
+    """
+    print(f"\n--- Training Classifier using {n_components} Principal Components ---")
+    if class_names is None:
+        class_names = ['Low Activity', 'High Activity']
+    # 1. Use PCA for dimensionality reduction
+    pca = PCA(n_components=n_components)
+    features = pca.fit_transform(reservoir_activity)
+    # Optional: Plot the scree plot to validate n_components
+    plot_scree(pca)
+    # 2. Split data into training and testing sets
+    X_train, X_test, y_train, y_test = train_test_split(
+        features, labels, test_size=0.3, random_state=42, stratify=labels
+    )
+    # 3. Train a logistic regression model
+    classifier = LogisticRegression(random_state=42)
+    classifier.fit(X_train, y_train)
+    # 4. Evaluate the model
+    accuracy = classifier.score(X_test, y_test)
+    print(f"Classifier Accuracy: {accuracy:.2%}")
+    # Print a detailed classification report
+    predictions = classifier.predict(X_test)
+    print("\nClassification Report:")
+    print(classification_report(y_test, predictions, target_names=class_names))
+    # Display a confusion matrix
+    print("Confusion Matrix:")
+    cm = confusion_matrix(y_test, predictions)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)
+    disp.plot()
+    plt.show()
