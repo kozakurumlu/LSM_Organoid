@@ -15,8 +15,10 @@ if __name__ == '__main__':
     LIF_PARAMS = { 'v_rest': -65.0, 'v_reset': -65.0, 'v_thresh': -50.0, 'tau_m': 20.0, 
                    'tau_refrac': 5.0, 'tau_syn_E': 5.0, 'tau_syn_I': 10.0, 'i_offset': 0.15 }
 
-    N_INPUT, N_EXC, N_INH = 25, 160, 40
+    N_INPUT = 40 
+    N_EXC, N_INH = 160, 40
     N_RESERVOIR = N_EXC + N_INH
+    
     
     rng = np.random.default_rng(seed=42)
     
@@ -54,14 +56,14 @@ if __name__ == '__main__':
             )
             
             lsm_network = Network(lif_params=LIF_PARAMS, n_input=N_INPUT, n_exc=N_EXC, n_inh=N_INH, dt=DT, rng=rng)
-            lsm_network.connect_inputs(w_input=1.0, delay_ms=1.0, p_connect=0.2)
+            lsm_network.connect_inputs(w_input=2.5, delay_ms=1.0, p_connect=0.2)
 
             # Define a dictionary of weights for the internal connections
             reservoir_weights = {
-                'ee': 0.2,   # Excitatory -> Excitatory
-                'ei': 0.5,   # Excitatory -> Inhibitory
-                'ie': 0.4,   # Inhibitory -> Excitatory
-                'ii': 0.4    # Inhibitory -> Inhibitory
+                'ee': 0.1,   # Reduced from 0.2
+                'ei': 0.5,
+                'ie': 0.4,
+                'ii': 0.4
             }
             # Connect the reservoir internally with the new method
             lsm_network.connect_reservoir(
