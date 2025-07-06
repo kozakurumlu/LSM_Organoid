@@ -2,6 +2,22 @@ import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from scipy.ndimage import gaussian_filter1d
+from sklearn.metrics import classification_report, confusion_matrix, ConfusionMatrixDisplay
+
+def plot_scree(pca):
+    """
+    Plots the explained variance of each principal component.
+
+    Args:
+        pca (PCA): A fitted PCA object from scikit-learn.
+    """
+    plt.figure(figsize=(10, 6))
+    plt.plot(np.arange(1, len(pca.explained_variance_ratio_) + 1), pca.explained_variance_ratio_, 'o-', linewidth=2)
+    plt.title('Scree Plot')
+    plt.xlabel('Principal Component')
+    plt.ylabel('Variance Explained')
+    plt.grid(True)
+    plt.show()
 
 
 def plot_activity_and_pca(network, total_duration_s, input_spikes, hidden_indices, output_indices):
