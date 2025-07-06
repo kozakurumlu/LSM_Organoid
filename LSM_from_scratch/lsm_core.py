@@ -59,6 +59,7 @@ class Network:
                 if self.rng.random() < p_connect:
                     self.input_connections[i].append((j, w_input, delay_steps))
 
+
     def run(self, duration_s, input_spike_trains):
         """Executes the simulation."""
         duration_ms = duration_s * 1000
