@@ -4,53 +4,42 @@ from collections import deque
 from sklearn.decomposition import PCA
 from scipy.ndimage import gaussian_filter1d
 
-
-def convert_organoid_data_to_lsm_input(organoid_spikes, num_lsm_inputs, bin_size_s, duration_s, dt_ms, rng):
+def convert_spike_counts_to_lsm_input(organoid_spike_counts, num_lsm_inputs, bin_size_s, dt_ms, rng):
     """
-    Converts raw organoid spike times into LSM input format using rate coding.
+    Converts organoid spike counts per bin into LSM input format.
 
     Args:
-        organoid_spikes (list): A list of 8 arrays, each containing spike times (in seconds) for an electrode.
+        organoid_spike_counts (list of lists): Data where each inner list contains the
+                                             spike counts for the 8 electrodes in one time bin.
         num_lsm_inputs (int): Total number of input neurons in the LSM (e.g., 25).
-        bin_size_s (float): The time window for counting spikes and calculating rate (in seconds).
-        duration_s (float): Total simulation duration (in seconds).
+        bin_size_s (float): The time window for counting spikes (in seconds).
         dt_ms (float): The simulation timestep in milliseconds.
         rng (Generator): NumPy random number generator.
 
     Returns:
         list: A list of NumPy arrays with spike times formatted for the LSM.
     """
-    print(f"Converting organoid data with a {bin_size_s*1000}ms bin size...")
+    print(f"Converting spike counts to LSM input (bin size: {bin_size_s*1000}ms)...")
     
-    # Initialize empty lists for each LSM input neuron's spikes
     lsm_spikes_list = [[] for _ in range(num_lsm_inputs)]
     
-    # Determine how LSM input neurons are assigned to the 8 organoid electrodes
     neurons_per_electrode = num_lsm_inputs // 8
     remainder = num_lsm_inputs % 8
-    
-    time_bins = np.arange(0, duration_s, bin_size_s)
-    
-    lsm_neuron_idx_start = 0
-    for electrode_idx in range(8):
-        # Assign neurons to this electrode, adding one from the remainder if applicable
-        num_assigned = neurons_per_electrode + (1 if electrode_idx < remainder else 0)
-        lsm_neuron_indices = range(lsm_neuron_idx_start, lsm_neuron_idx_start + num_assigned)
+
+    # Iterate through each time bin's data
+    for bin_index, counts_in_bin in enumerate(organoid_spike_counts):
+        t_start = bin_index * bin_size_s
+        t_stop = t_start + bin_size_s
         
-        electrode_raw_spikes = organoid_spikes[electrode_idx]
-        
-        # Calculate rate and generate spikes for each time bin
-        for t_start in time_bins:
-            t_stop = t_start + bin_size_s
-            
-            # Count spikes from the organoid electrode in the current bin
-            spikes_in_bin = electrode_raw_spikes[(electrode_raw_spikes >= t_start) & (electrode_raw_spikes < t_stop)]
-            spike_count = len(spikes_in_bin)
+        lsm_neuron_idx_start = 0
+        # Iterate through the 8 electrode counts in the current bin
+        for electrode_idx, spike_count in enumerate(counts_in_bin):
+            num_assigned = neurons_per_electrode + (1 if electrode_idx < remainder else 0)
             
             if spike_count > 0:
                 rate_hz = spike_count / bin_size_s
                 
-                # Generate spikes for the assigned LSM neurons at this rate for this bin's duration
+                # Generate spikes for the assigned LSM neurons
                 generated_trains = generate_poisson_spike_trains(
                     n_neurons=num_assigned,
                     rate=rate_hz,
@@ -61,16 +50,14 @@ def convert_organoid_data_to_lsm_input(organoid_spikes, num_lsm_inputs, bin_size
                 )
                 
                 # Add the generated spikes to the correct lists
+                lsm_neuron_indices = range(lsm_neuron_idx_start, lsm_neuron_idx_start + num_assigned)
                 for i, lsm_idx in enumerate(lsm_neuron_indices):
                     lsm_spikes_list[lsm_idx].extend(generated_trains[i])
 
-        lsm_neuron_idx_start += num_assigned
+            lsm_neuron_idx_start += num_assigned
 
-    # Convert lists of spikes to NumPy arrays for the simulation
     final_lsm_spikes = [np.array(spikes) for spikes in lsm_spikes_list]
-    
     return final_lsm_spikes
-
 # --- 1. Helper Function to Generate Input Spikes (Unchanged) ---
 def generate_poisson_spike_trains(n_neurons, rate, t_start, t_stop, dt=1.0, rng=None):
     """Generates a list of spike time arrays for a population of neurons."""
@@ -180,6 +167,25 @@ class Network:
         
         print("Simulation finished.")
 
+def generate_mock_spike_counts(duration_s, bin_size_s, rng):
+    """Creates mock spike count data with temporal structure."""
+    print("Generating mock organoid spike count data...")
+    num_bins = int(duration_s / bin_size_s)
+    mock_counts = []
+    
+    # Create two distinct stimulation periods
+    mid_point = num_bins // 2
+    
+    for bin_idx in range(num_bins):
+        if bin_idx < mid_point:
+            # First half: High activity period (5-15 spikes per electrode)
+            counts_for_bin = rng.integers(5, 16, size=8).tolist()
+        else:
+            # Second half: Low activity period (0-5 spikes per electrode)
+            counts_for_bin = rng.integers(0, 6, size=8).tolist()
+        mock_counts.append(counts_for_bin)
+    
+    return mock_counts
 
 def plot_activity_and_pca(network, total_duration_s, input_spikes, hidden_indices, output_indices):
     """
@@ -263,9 +269,9 @@ def plot_activity_and_pca(network, total_duration_s, input_spikes, hidden_indice
 
     for i, (pc_data, label) in enumerate(zip(pcas, labels)):
         ax.plot(pc_data[:split_point, 0], pc_data[:split_point, 1], pc_data[:split_point, 2], 
-                label=f'{label} (100 Hz)', c=colors['high'][i], alpha=0.9)
+                label=f'{label} (High Activity)', c=colors['high'][i], alpha=0.9)
         ax.plot(pc_data[split_point:, 0], pc_data[split_point:, 1], pc_data[split_point:, 2], 
-                label=f'{label} (50 Hz)', c=colors['low'][i], alpha=0.9) # Updated label
+                label=f'{label} (Low Activity)', c=colors['low'][i], alpha=0.9)
     
     ax.set_title('3D PCA of State Trajectories in a Shared Space')
     ax.set_xlabel('Principal Component 1')
@@ -274,16 +280,15 @@ def plot_activity_and_pca(network, total_duration_s, input_spikes, hidden_indice
     ax.legend()
     plt.show()
 
-# --- Main execution block ---
+
 if __name__ == '__main__':
-    DT = 1.0
-    TOTAL_DURATION = 20.0
+    DT = 1.0  # ms
+    TOTAL_DURATION = 20.0 # seconds
     
     LIF_PARAMS = {
         'v_rest': -65.0, 'v_reset': -65.0, 'v_thresh': -50.0,
         'tau_m': 20.0, 'tau_refrac': 5.0, 'tau_syn_E': 5.0,
-        'tau_syn_I': 10.0, 
-        'i_offset': 0.1, # Re-tuned parameter
+        'tau_syn_I': 10.0, 'i_offset': 0.1,
     }
 
     N_INPUT, N_EXC, N_INH = 25, 160, 40
@@ -291,21 +296,28 @@ if __name__ == '__main__':
     N_HIDDEN_PLOT, N_OUTPUT_PLOT = 50, 25
     hidden_indices = list(range(N_HIDDEN_PLOT))
     output_indices = list(range(N_TOTAL - N_OUTPUT_PLOT, N_TOTAL))
-    RATE_HIGH = 100.0
-    
-    # === YOUR SUGGESTION: Increase the low rate input ===
-    RATE_LOW = 50.0 
     
     rng = np.random.default_rng(seed=42)
     
-    spikes_high = generate_poisson_spike_trains(N_INPUT, RATE_HIGH, 0.0, TOTAL_DURATION / 2, dt=DT, rng=rng)
-    spikes_low = generate_poisson_spike_trains(N_INPUT, RATE_LOW, TOTAL_DURATION / 2, TOTAL_DURATION, dt=DT, rng=rng)
-    input_spikes = [np.concatenate((h, l)) for h, l in zip(spikes_high, spikes_low)]
+    # --- 1. Generate Mock Organoid Spike Count Data ---
+    BIN_SIZE_S = 0.2  # 200ms bin size
+    mock_organoid_counts = generate_mock_spike_counts(TOTAL_DURATION, BIN_SIZE_S, rng)
 
+    # --- 2. Convert Spike Counts to LSM Input Format ---
+    lsm_input_spikes = convert_spike_counts_to_lsm_input(
+        organoid_spike_counts=mock_organoid_counts,
+        num_lsm_inputs=N_INPUT,
+        bin_size_s=BIN_SIZE_S,
+        dt_ms=DT,
+        rng=rng
+    )
+
+    # --- 3. Setup and Run the LSM ---
     lsm_network = Network(lif_params=LIF_PARAMS, n_input=N_INPUT, n_exc=N_EXC, n_inh=N_INH, dt=DT, rng=rng)
+    lsm_network.connect_inputs(w_input=1.0, delay_ms=1.0, p_connect=0.1)
     
-    lsm_network.connect_inputs(w_input=1.0, delay_ms=1.0, p_connect=0.1) # Re-tuned parameter
-    
-    lsm_network.run(duration_s=TOTAL_DURATION, input_spike_trains=input_spikes)
+    # Pass the newly formatted spikes to the simulation
+    lsm_network.run(duration_s=TOTAL_DURATION, input_spike_trains=lsm_input_spikes)
 
-    plot_activity_and_pca(lsm_network, TOTAL_DURATION, input_spikes, hidden_indices, output_indices)
+    # --- 4. Plot Results ---
+    plot_activity_and_pca(lsm_network, TOTAL_DURATION, lsm_input_spikes, hidden_indices, output_indices)
