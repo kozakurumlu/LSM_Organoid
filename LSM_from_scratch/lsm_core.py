@@ -38,6 +38,7 @@ class LIFNeuron:
             return True
         return False
 
+
 class Network:
     """Manages the entire simulation, including all neurons and connections."""
     def __init__(self, lif_params, n_input, n_exc, n_inh, dt=1.0, rng=None):
@@ -47,46 +48,70 @@ class Network:
         self.n_inh = n_inh
         self.n_total = n_exc + n_inh
         self.reservoir_neurons = [LIFNeuron(lif_params, dt) for _ in range(self.n_total)]
-        self.input_connections = [[] for _ in range(n_input)]
         self.rng = rng if rng is not None else np.random.default_rng()
+        
+        self.connections = {
+            'input': [[] for _ in range(n_input)],
+            'recurrent': [[] for _ in range(self.n_total)]
+        }
 
     def connect_inputs(self, w_input, delay_ms, p_connect=0.1):
-        """Connects each input neuron to a random subset of reservoir neurons."""
+        """Connects input neurons to the reservoir."""
         print(f"Connecting inputs with {p_connect*100}% probability...")
         delay_steps = int(delay_ms / self.dt)
         for i in range(self.n_input):
             for j in range(self.n_total):
                 if self.rng.random() < p_connect:
-                    self.input_connections[i].append((j, w_input, delay_steps))
+                    self.connections['input'][i].append((j, w_input, delay_steps))
 
+    def connect_reservoir(self, weights, delay_ms, p_connect):
+        """Creates sparse, random connections within the reservoir (E-E, E-I, I-E, I-I)."""
+        print("Connecting reservoir neurons internally with E/I balance...")
+        delay_steps = int(delay_ms / self.dt)
+        exc_neurons = range(self.n_exc)
+        inh_neurons = range(self.n_exc, self.n_total)
+
+        for i in range(self.n_total):
+            is_pre_exc = (i < self.n_exc)
+            for j in range(self.n_total):
+                if i == j: continue
+                
+                is_post_exc = (j < self.n_exc)
+                
+                if self.rng.random() < p_connect:
+                    if is_pre_exc and is_post_exc: weight = weights['ee']   # E -> E
+                    elif is_pre_exc and not is_post_exc: weight = weights['ei'] # E -> I
+                    elif not is_pre_exc and is_post_exc: weight = -weights['ie']# I -> E (negative)
+                    else: weight = -weights['ii']                           # I -> I (negative)
+                    
+                    self.connections['recurrent'][i].append((j, weight, delay_steps))
 
     def run(self, duration_s, input_spike_trains):
-        """Executes the simulation."""
+        """Executes the simulation, now handling both E and I currents."""
         duration_ms = duration_s * 1000
         num_steps = int(duration_ms / self.dt)
         spike_queue = deque()
         self.spike_recorder = []
         
-        print(f"Starting simulation for {duration_s}s ({num_steps} steps)...")
+        print(f"Starting simulation trial for {duration_s}s...")
         
         for step in range(num_steps):
             current_time_ms = step * self.dt
             
             for neuron_idx, spike_times in enumerate(input_spike_trains):
                 if np.any(np.isclose(spike_times, current_time_ms)):
-                    for target_idx, weight, delay_steps in self.input_connections[neuron_idx]:
-                        arrival_step = step + delay_steps
-                        spike_queue.append((arrival_step, target_idx, weight))
+                    for target_idx, weight, delay_steps in self.connections['input'][neuron_idx]:
+                        spike_queue.append((step + delay_steps, target_idx, weight))
 
             while spike_queue and spike_queue[0][0] == step:
                 _, target_idx, weight = spike_queue.popleft()
                 if weight > 0:
                     self.reservoir_neurons[target_idx].i_syn_E += weight
-                else: 
+                else: # Handle inhibitory currents
                     self.reservoir_neurons[target_idx].i_syn_I += weight
             
             for i in range(self.n_total):
                 if self.reservoir_neurons[i].update():
                     self.spike_recorder.append((current_time_ms, i))
-        
-        print("Simulation finished.") 
+                    for target_idx, weight, delay_steps in self.connections['recurrent'][i]:
+                        spike_queue.append((step + delay_steps, target_idx, weight))

@@ -55,10 +55,21 @@ if __name__ == '__main__':
             
             lsm_network = Network(lif_params=LIF_PARAMS, n_input=N_INPUT, n_exc=N_EXC, n_inh=N_INH, dt=DT, rng=rng)
             lsm_network.connect_inputs(w_input=1.0, delay_ms=1.0, p_connect=0.2)
-            
-            # --- The line below is now removed ---
-            # lsm_network.connect_reservoir(...) 
-            
+
+            # Define a dictionary of weights for the internal connections
+            reservoir_weights = {
+                'ee': 0.2,   # Excitatory -> Excitatory
+                'ei': 0.5,   # Excitatory -> Inhibitory
+                'ie': 0.4,   # Inhibitory -> Excitatory
+                'ii': 0.4    # Inhibitory -> Inhibitory
+            }
+            # Connect the reservoir internally with the new method
+            lsm_network.connect_reservoir(
+                weights=reservoir_weights,
+                delay_ms=1.0, 
+                p_connect=0.1
+            )
+
             lsm_network.run(duration_s=TRIAL_DURATION, input_spike_trains=lsm_input_spikes)
 
             # --- Collect and process results for this trial ---
@@ -108,6 +119,6 @@ if __name__ == '__main__':
     train_and_evaluate_classifier(
         reservoir_activity=smoothed_reservoir_activity,
         labels=final_labels,
-        n_components=1,
+        n_components=5,
         class_names=['Pattern B (Random Walk)', 'Pattern A (Sine)']
     )
