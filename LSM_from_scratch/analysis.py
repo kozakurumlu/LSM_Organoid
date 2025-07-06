@@ -108,6 +108,27 @@ def plot_scree(pca, ax=None):
     ax.set_title('Scree Plot')
     plt.show()
 
+def plot_reservoir_activity(spike_recorder, duration_s, n_total):
+    """
+    Creates a raster plot of the reservoir's spiking activity.
+    """
+    if not spike_recorder:
+        print("Reservoir recorded no spikes.")
+        return
+
+    spike_times, neuron_ids = zip(*spike_recorder)
+    
+    plt.figure(figsize=(15, 6))
+    plt.scatter(np.array(spike_times) / 1000.0, neuron_ids, marker='.', s=5, c='k', alpha=0.6)
+    plt.axvline(duration_s / 2, color='r', linestyle='--', label='Pattern Switch')
+    plt.title('Reservoir Spike Activity Raster Plot')
+    plt.xlabel('Time (s)')
+    plt.ylabel('Reservoir Neuron Index')
+    plt.ylim(-1, n_total)
+    plt.xlim(0, duration_s)
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 
 def train_and_evaluate_classifier(reservoir_activity, labels, n_components=5, class_names=None):
     """
