@@ -29,6 +29,60 @@ def generate_mock_spike_counts(duration_s, bin_size_s, rng):
     return mock_counts
 
 
+def convert_raster_to_lsm_input(organoid_raster_data, num_lsm_inputs, dt_ms):
+    """
+    Converts organoid raster data (precise spike times) into LSM input format
+    using direct 1-to-1 spike translation.
+
+    Args:
+        organoid_raster_data (list of lists): Data where each inner list contains the
+                                              precise spike times (in seconds) for one of the 8 electrodes.
+        num_lsm_inputs (int): Total number of input neurons in the LSM (e.g., 40).
+        dt_ms (float): The simulation timestep in milliseconds, used for snapping spike times.
+
+    Returns:
+        list: A list of NumPy arrays with spike times formatted for the LSM.
+    """
+    
+    
+    if num_lsm_inputs % 8 != 0:
+        raise ValueError("num_lsm_inputs must be divisible by 8 for this mapping.")
+        
+    lsm_spikes_list = [[] for _ in range(num_lsm_inputs)]
+    neurons_per_channel = num_lsm_inputs // 8
+
+    # Iterate through each of the 8 electrode channels
+    for electrode_idx, organoid_spike_times_s in enumerate(organoid_raster_data):
+        if not organoid_spike_times_s:  # Skip if the electrode has no spikes
+            continue
+            
+        # Determine the dedicated group of LSM neurons for this electrode
+        start_neuron_idx = electrode_idx * neurons_per_channel
+        
+        # We use a cycle counter to distribute spikes evenly among the assigned neurons
+        neuron_cycle_idx = 0
+        
+        # For each spike from the organoid...
+        for spike_time_s in organoid_spike_times_s:
+            # 1. Convert spike time to milliseconds
+            spike_time_ms = spike_time_s * 1000
+            
+            # 2. Snap the time to the nearest simulation timestep
+            snapped_time_ms = round(spike_time_ms / dt_ms) * dt_ms
+            
+            # 3. Choose which LSM neuron in the group will fire (round-robin)
+            target_lsm_neuron = start_neuron_idx + (neuron_cycle_idx % neurons_per_channel)
+            
+            # 4. Assign the spike to that LSM neuron
+            lsm_spikes_list[target_lsm_neuron].append(snapped_time_ms)
+            
+            # 5. Move to the next neuron in the group for the next spike
+            neuron_cycle_idx += 1
+
+    # Convert lists to NumPy arrays, ensuring they are sorted and unique
+    final_lsm_spikes = [np.unique(spikes) for spikes in lsm_spikes_list]
+    return final_lsm_spikes
+
 def convert_spike_counts_to_lsm_input(organoid_spike_counts, num_lsm_inputs, bin_size_s, dt_ms, rng):
     """
     Converts organoid spike counts into LSM input spikes, with each of the 8
