@@ -47,7 +47,7 @@ To run the demonstration, simply execute the Python script from your terminal:
 When you run the script, you will see output similar to this, clearly showing the performance boost from the LSM:
 
 `Classification accuracy without LSM: 54.5%
-Classification accuracy with LSM: 98.2%`
+Classification accuracy with LSM: 77.2%`
 
 (Note: Exact percentages may vary slightly between runs due to random initializations.)
 
