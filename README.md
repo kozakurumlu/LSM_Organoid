@@ -41,13 +41,13 @@ Evaluation: The script prints the classification accuracy for both methods. You 
 🚀 How to Run
 To run the demonstration, simply execute the Python script from your terminal:
 
-python lsm_from_scratch.py
+`python lsm_from_scratch.py`
 
 📊 Expected Results
 When you run the script, you will see output similar to this, clearly showing the performance boost from the LSM:
 
-Classification accuracy without LSM: 54.5%
-Classification accuracy with LSM: 98.2%
+`Classification accuracy without LSM: 54.5%
+Classification accuracy with LSM: 98.2%`
 
 (Note: Exact percentages may vary slightly between runs due to random initializations.)
 
